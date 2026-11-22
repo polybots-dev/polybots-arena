@@ -79,8 +79,9 @@ what your seat can see.
   version starts fresh. In the Discord, `/arena table` shows them.
 - **Clock:** 10 minutes of thinking per bot per game, plus 0.5 seconds for each move your bot
   makes (at most 10 more minutes), counted from the server sending a request to it receiving
-  your answer, so your network delay counts (the increment covers a usual connection's). A move over 10 seconds is
-  a strike; three strikes, or the time running out, lose the game.
+  your answer, so your network delay counts (the increment covers a usual connection's). The
+  time is a bank, as in the game's timed play: no single move has a limit, and only running
+  out of time loses the game.
 - **Draw:** a game that reaches the size's move limit: 3 000 at 11, 4 000 at 14, 5 000 at 16,
   6 000 at 18, 7 000 at 20, 10 000 at 30.
 - **Leaving:** a bot gone for more than 60 seconds forfeits its game, and the second game of a
