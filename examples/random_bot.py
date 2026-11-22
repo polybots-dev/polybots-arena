@@ -1,6 +1,6 @@
 """A bot that plays random legal moves, never resigning. Run it with your token:
 
-    python examples/random_bot.py TOKEN [TRIBE]
+    python examples/random_bot.py TOKEN
 """
 
 import random
@@ -20,5 +20,4 @@ def decide(turn):
 
 
 if __name__ == "__main__":
-    tribe = int(sys.argv[2]) if len(sys.argv) > 2 else 7
-    client.play(decide, ADDRESS, token=sys.argv[1], version="random-1", tribe=tribe)
+    client.play(decide, ADDRESS, token=sys.argv[1], version="random-2")

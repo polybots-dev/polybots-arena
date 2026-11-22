@@ -5,10 +5,14 @@
     def decide(turn):
         return 0            # an index into turn.moves
 
-    client.play(decide, "wss://...", token="...", version="v1", tribe=7)
+    client.play(decide, "wss://...", token="...", version="v1")
 
 `decide` gets a `Turn`: your seat's view and legal moves as numpy arrays, with the names to
 read them by (`turn.names`). It needs only numpy, websockets and certifi, not the engine.
+
+By default a bot accepts every board size, map type and tribe rule (`protocol.CONDITIONS`);
+`sizes`, `maps` and `tribe_rules` narrow that. What a version accepts is fixed once it has
+played: accepting other conditions needs a new version label.
 """
 
 import json
@@ -36,21 +40,22 @@ class BotError(Exception):
 
 class Turn:
     """One request. `names` is the server's welcome: `tile_planes`, `scalar_fields`,
-    `player_fields`, `move_fields`, `preview_fields`, `kinds`. A tile is `y * size + x`;
-    -1 marks what your seat does not know."""
+    `player_fields`, `move_fields`, `preview_fields`, `kinds`. `size` is the board's side; a
+    tile is `y * size + x`; -1 marks what your seat does not know."""
 
     def __init__(self, message, names):
-        self.names, self.game, self.seat = names, message["game"], message["seat"]
+        self.names, self.game, self.seat, self.size = names, message["game"], message["seat"], message["size"]
         self.time_left, self.income = message["time_left"], message["income"]
         for name in ARRAYS:
             setattr(self, name, protocol.unpack(message[name]))
 
 
 class Client:
-    def __init__(self, decide, url, token, version, tribe, games=1, retry=5.0, log=print):
+    def __init__(self, decide, url, token, version, games=1, sizes=protocol.SIZES, maps=tuple(protocol.MAPS),
+                 tribe_rules=protocol.TRIBE_RULES, retry=5.0, log=print):
         self.decide, self.url, self.retry, self.log = decide, url, retry, log
-        self.entry = {"type": "hello", "protocol": protocol.VERSION, "token": token,
-                      "version": version, "tribe": tribe, "games": games}
+        self.entry = {"type": "hello", "protocol": protocol.VERSION, "token": token, "version": version,
+                      "games": games, "sizes": list(sizes), "maps": list(maps), "tribe_rules": list(tribe_rules)}
         self.socket, self.closed = None, threading.Event()
 
     def run(self):
@@ -103,5 +108,6 @@ class Client:
         self.drop()
 
 
-def play(decide, url, token, version, tribe, games=1):
-    Client(decide, url, token, version, tribe, games).run()
+def play(decide, url, token, version, games=1, **accepts):
+    """Plays until the server refuses the bot; `accepts` takes `sizes`, `maps`, `tribe_rules`."""
+    Client(decide, url, token, version, games, **accepts).run()

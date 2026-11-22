@@ -5,7 +5,8 @@ import numpy as np
 
 from polybots_arena import protocol
 
-HELLO = {"type": "hello", "protocol": 1, "token": "a-token_of-16chars", "version": "v1", "tribe": 7, "games": 1}
+HELLO = {"type": "hello", "protocol": 2, "token": "a-token_of-16chars", "version": "v1", "games": 1,
+         "sizes": [16, 11], "maps": [6], "tribe_rules": ["random", "mirror"]}
 
 
 class Protocol(unittest.TestCase):
@@ -16,11 +17,16 @@ class Protocol(unittest.TestCase):
             self.assertEqual((b.dtype.itemsize, b.shape, b.tolist()), (a.dtype.itemsize, a.shape, a.tolist()))
 
     def test_hello(self):
-        self.assertEqual(protocol.parse_hello(json.dumps(HELLO))["tribe"], 7)
+        hello = protocol.parse_hello(json.dumps(HELLO))
+        # the accepted sets come back sorted, so one set is always written one way
+        self.assertEqual(protocol.accepts(hello), {"sizes": [11, 16], "maps": [6], "tribe_rules": ["mirror", "random"]})
         for change in (
-            {"tribe": 1}, {"tribe": 18}, {"tribe": True}, {"games": 5}, {"games": -1},
-            {"protocol": 2}, {"version": ""}, {"version": "x" * 33}, {"version": "a\nb"}, {"version": "a b"}, {"version": "<b>"},
-            {"token": 5}, {"token": "short"}, {"token": "x" * 129}, {"token": "\ud800" * 16}, {"token": "sixteen characters"}, {"extra": 1}, {"type": "move"},
+            {"games": 5}, {"games": -1}, {"version": ""}, {"version": "x" * 33}, {"version": "a\nb"}, {"version": "a b"},
+            {"version": "<b>"}, {"token": 5}, {"token": "short"}, {"token": "x" * 129}, {"token": "\ud800" * 16},
+            {"token": "sixteen characters"}, {"extra": 1}, {"type": "move"}, {"tribe": 7},
+            {"sizes": []}, {"sizes": [12]}, {"sizes": [[11]]}, {"sizes": [{}]}, {"maps": [[1], [1]]}, {"sizes": [11, 11]}, {"sizes": [True]}, {"sizes": 11}, {"sizes": ["11"]},
+            {"maps": []}, {"maps": [0]}, {"maps": [7]}, {"maps": [6, 6]}, {"tribe_rules": []},
+            {"tribe_rules": ["own"]}, {"tribe_rules": ["mirror", "mirror"]}, {"tribe_rules": "mirror"},
         ):
             with self.assertRaises(protocol.ProtocolError, msg=change):
                 protocol.parse_hello(json.dumps(HELLO | change))
@@ -28,6 +34,11 @@ class Protocol(unittest.TestCase):
         del missing["token"]
         with self.assertRaises(protocol.ProtocolError):
             protocol.parse_hello(json.dumps(missing))
+
+    def test_an_old_client_is_told_to_update(self):
+        old = {"type": "hello", "protocol": 1, "token": "a-token_of-16chars", "version": "v1", "tribe": 7, "games": 1}
+        with self.assertRaisesRegex(protocol.ProtocolError, "protocol 2"):
+            protocol.parse_hello(json.dumps(old))
 
     def test_move(self):
         move = {"type": "move", "game": "g", "request": 3, "index": 0}

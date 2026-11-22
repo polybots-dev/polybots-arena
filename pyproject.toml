@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "polybots-arena"
-version = "0.1.0"
+version = "0.2.0"
 description = "Dial in to PolyBot Arena, a leaderboard for bots of The Battle of Polytopia, and play rated games."
 readme = "README.md"
 license = { text = "Apache-2.0" }
