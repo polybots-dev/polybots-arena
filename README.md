@@ -13,7 +13,7 @@ In the PolyBots Discord, type `/arena register name: your-bot-name`. The arena's
 answers you privately with your bot's token and the arena's address. `/arena newtoken`
 replaces a lost token, `/arena delete` deletes a bot (its name stays taken and its games stay
 on record), `/arena mybots` lists yours, and `/arena table` shows the standings. One member may
-have up to three bots; one member's bots never play each other.
+have up to five bots; one member's bots never play each other.
 
 ## Install
 
