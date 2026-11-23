@@ -1,4 +1,4 @@
-"""The arena's wire protocol, version 2: JSON text messages between the match server and a bot.
+"""The arena's wire protocol, version 3: JSON text messages between the match server and a bot.
 
 A bot needs only this module's message shapes: `welcome` carries every name it needs to read
 a view, so it needs neither the engine nor the game's rule data.
@@ -10,16 +10,19 @@ import re
 
 import numpy as np
 
-VERSION = 2
+VERSION = 3
 MAX_BOT_MESSAGE = 4096  # bytes; a bot's messages are a few short fields
 # What the game's own screen shows beyond the view; the other seat's view is never among them.
 OUTPUTS = ("previews", "defence", "income", "max_health")
-TRIBES = range(2, 18)
+# the tribes a game may have, by id, named as in the game's rule data
+TRIBES = {2: "aimo", 3: "aquarion", 4: "bardur", 5: "elyrion", 6: "hoodrick", 7: "imperius", 8: "kickoo",
+          9: "luxidoor", 10: "oumaji", 11: "quetzali", 12: "vengir", 13: "xinxi", 14: "yadakk", 15: "zebasi",
+          16: "polaris", 17: "cymanti"}
 # What a match may be played on; a bot's hello says which of each it accepts.
 SIZES = (11, 14, 16, 18, 20, 30)  # board sides, the game's tiny to massive
 MAPS = {1: "dryland", 2: "lakes", 3: "continents", 4: "archipelago", 5: "water-world", 6: "pangea"}
-# mirror: both seats play one drawn tribe; random: two different drawn tribes
-TRIBE_RULES = ("mirror", "random")
+# open: each bot picks its own tribe; mirror: both seats play one drawn tribe; random: two different drawn tribes
+TRIBE_RULES = ("open", "mirror", "random")
 CONDITIONS = {"sizes": SIZES, "maps": tuple(MAPS), "tribe_rules": TRIBE_RULES}
 
 
@@ -61,10 +64,10 @@ def _no_duplicates(pairs):
     return message
 
 
-def _parse(text, kind, fields):
-    """A bot's message of one kind with exactly `fields` (name to type); bool is not an int.
-    Any text at all gives a message or a ProtocolError, never another error. A hello of another
-    protocol version is refused for that, before its fields are read."""
+def _parse(text, kinds):
+    """A bot's message of one of `kinds` (its type to its exact fields, name to type); bool is
+    not an int. Any text at all gives a message or a ProtocolError, never another error. A
+    hello of another protocol version is refused for that, before its fields are read."""
     if not isinstance(text, str) or len(text) > MAX_BOT_MESSAGE:
         raise ProtocolError("not text, or over the size limit")
     try:
@@ -73,8 +76,10 @@ def _parse(text, kind, fields):
         message = json.loads(text, object_pairs_hook=_no_duplicates)
     except (ValueError, RecursionError) as e:  # bad JSON or encoding, or nesting too deep
         raise e if isinstance(e, ProtocolError) else ProtocolError("not JSON") from None
-    if not isinstance(message, dict) or message.get("type") != kind:
-        raise ProtocolError(f"expected a {kind} message")
+    kind = message.get("type") if isinstance(message, dict) else None
+    if not isinstance(kind, str) or kind not in kinds:
+        raise ProtocolError(f"expected a {' or '.join(kinds)} message")
+    fields = kinds[kind]
     if kind == "hello" and message.get("protocol") != VERSION:
         raise ProtocolError(f"this server speaks protocol {VERSION}; update the client")
     if set(message) != {"type", *fields}:
@@ -86,8 +91,8 @@ def _parse(text, kind, fields):
 
 
 def parse_hello(text):
-    hello = _parse(text, "hello", {"protocol": int, "token": str, "version": str, "games": int,
-                                   "sizes": list, "maps": list, "tribe_rules": list})
+    hello = _parse(text, {"hello": {"protocol": int, "token": str, "version": str, "games": int,
+                                    "sizes": list, "maps": list, "tribe_rules": list}})
     if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", hello["token"]):
         raise ProtocolError("token is 16 to 128 letters, digits, dashes or underscores")
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", hello["version"]):  # it is shown on the public table
@@ -114,5 +119,18 @@ def accepts(hello):
     return {name: sorted(hello[name]) for name in CONDITIONS}
 
 
+MOVE = {"game": str, "request": int, "index": int}
+TRIBE = {"match": str, "tribe": int}  # the answer to a `pick`
+
+
 def parse_move(text):
-    return _parse(text, "move", {"game": str, "request": int, "index": int})
+    return _parse(text, {"move": MOVE})
+
+
+def parse_tribe(text):
+    return _parse(text, {"tribe": TRIBE})
+
+
+def parse_answer(text):
+    """A `move` or a `tribe`, whichever the message is."""
+    return _parse(text, {"move": MOVE, "tribe": TRIBE})

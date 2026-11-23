@@ -30,7 +30,8 @@ Python 3.11 or later. The only dependencies are numpy, websockets and certifi.
 
     client.play(decide, "wss://polybot-arena.taild6d50c.ts.net/", token="...", version="v1")
 
-`examples/random_bot.py` is a complete bot that plays random legal moves:
+`examples/random_bot.py` is a complete bot that plays random legal moves and picks its tribe
+at random:
 
     python examples/random_bot.py YOUR_TOKEN
 
@@ -53,6 +54,26 @@ Python 3.11 or later. The only dependencies are numpy, websockets and certifi.
 Before a game starts your bot's log gets a `game` message: its seat, the board size, the map
 type, the tribe rule, both seats' tribes and the opponent.
 
+## Picking your tribe
+
+Under the `open` tribe rule (the default table) your bot picks its own tribe for each match,
+before the first game. `choose(pick)` gets the match's conditions and returns a tribe id:
+
+    def choose(pick):
+        # pick.size, pick.map (1 to 6), pick.mode, pick.tribes (the ids you may pick),
+        # pick.opponent (bot name, version), pick.time (seconds left to answer)
+        return 7 if pick.map == 3 else 16
+
+    client.play(decide, "wss://...", token="...", version="v1", choose=choose)
+
+Both bots pick at the same time and neither sees the other's pick until the first game's
+`game` message. Both may pick the same tribe. Your bot plays its pick in both games of the
+match, once in each seat. It has 30 seconds, not taken from its game clock; a tribe that is
+not in `pick.tribes`, or no answer in time, gets your bot a tribe drawn at random. Without a
+`choose`, your bot picks at random. `protocol.TRIBES` names the ids. `choose` returns an int;
+like `decide`, it runs on the thread that reads the connection, so while it thinks, your
+bot's other games wait.
+
 `turn.names["kinds"]` maps each move kind's name to its number, for example
 `turn.names["kinds"]["EndTurn"]`. -1 marks what your seat does not know: the server sends only
 what your seat can see.
@@ -62,17 +83,18 @@ what your seat can see.
 - **1v1**, capture-the-capital mode.
 - **Boards:** sizes 11, 14, 16, 18, 20 and 30; map types dryland, lakes, continents,
   archipelago, water world and pangea (numbered 1 to 6).
-- **Tribes are drawn by the arena**, by one of two rules: `mirror`, both seats one tribe, or
-  `random`, two different tribes. Ids: 2 Ai-Mo, 3 Aquarion, 4 Bardur, 5 Elyrion, 6 Hoodrick,
+- **Tribes**, by one of three rules: `open`, each bot picks its own (above); or drawn by the
+  arena, `mirror`, both seats one tribe, or `random`, two different tribes. Ids: 2 Ai-Mo, 3 Aquarion, 4 Bardur, 5 Elyrion, 6 Hoodrick,
   7 Imperius, 8 Kickoo, 9 Luxidoor, 10 Oumaji, 11 Quetzali, 12 Vengir, 13 Xin-xi, 14 Yadakk,
   15 Zebasi, 16 Polaris, 17 Cymanti.
 - **What your bot accepts:** by default every size, map type and tribe rule. Narrow it with
   `client.play(..., sizes=[11, 14], maps=[3, 6], tribe_rules=["random"])`. A match's
   conditions are drawn from what both bots accept. A version of your bot keeps what it has
   played accepting; other conditions need a new version label.
-- **A match is two games** on the same conditions and seat tribes, each on its own map, with
-  the bots swapping seats: your bot plays each seat and each tribe once.
-- **Tables:** per tribe rule, for all games, for each map type and for each size. Your bot is
+- **A match is two games** on the same conditions, each on its own map, with the bots swapping
+  seats. Drawn tribes stay with the seats, so your bot plays each seat and each tribe once; a
+  picked tribe stays with your bot.
+- **Tables:** per tribe rule (`open` first), for all games, for each map type and for each size. Your bot is
   listed on a table only if it accepts everything the table covers: a bot that plays only
   11 by 11 is on the 11 by 11 table, not on the one for all sizes. Ratings are per bot and
   version, on the Elo scale; a version appears on a table after 20 of its games. A new

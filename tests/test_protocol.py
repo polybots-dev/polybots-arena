@@ -5,7 +5,7 @@ import numpy as np
 
 from polybots_arena import protocol
 
-HELLO = {"type": "hello", "protocol": 2, "token": "a-token_of-16chars", "version": "v1", "games": 1,
+HELLO = {"type": "hello", "protocol": protocol.VERSION, "token": "a-token_of-16chars", "version": "v1", "games": 1,
          "sizes": [16, 11], "maps": [6], "tribe_rules": ["random", "mirror"]}
 
 
@@ -36,9 +36,11 @@ class Protocol(unittest.TestCase):
             protocol.parse_hello(json.dumps(missing))
 
     def test_an_old_client_is_told_to_update(self):
-        old = {"type": "hello", "protocol": 1, "token": "a-token_of-16chars", "version": "v1", "tribe": 7, "games": 1}
-        with self.assertRaisesRegex(protocol.ProtocolError, "protocol 2"):
-            protocol.parse_hello(json.dumps(old))
+        first = {"type": "hello", "protocol": 1, "token": "a-token_of-16chars", "version": "v1", "tribe": 7, "games": 1}
+        # protocol 2's hello has the same fields as this one's: only its number tells them apart
+        for old in (first, HELLO | {"protocol": 2}):
+            with self.assertRaisesRegex(protocol.ProtocolError, f"protocol {protocol.VERSION}; update the client"):
+                protocol.parse_hello(json.dumps(old))
 
     def test_move(self):
         move = {"type": "move", "game": "g", "request": 3, "index": 0}
@@ -51,6 +53,24 @@ class Protocol(unittest.TestCase):
         ):
             with self.assertRaises(protocol.ProtocolError, msg=str(text)[:40]):
                 protocol.parse_move(text)
+
+    def test_tribe(self):
+        tribe = {"type": "tribe", "match": "m", "tribe": 7}
+        move = {"type": "move", "game": "g", "request": 3, "index": 0}
+        self.assertEqual(protocol.parse_tribe(json.dumps(tribe)), tribe)
+        self.assertEqual([protocol.parse_answer(json.dumps(m)) for m in (tribe, move)], [tribe, move])
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse_tribe(json.dumps(move))
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse_move(json.dumps(tribe))
+        # the range is the pick's to judge (a tribe outside it is drawn), the types are refused here
+        self.assertEqual(protocol.parse_tribe(json.dumps(tribe | {"tribe": 99}))["tribe"], 99)
+        for wrong in ({"tribe": "7"}, {"tribe": True}, {"tribe": 7.0}, {"match": 1}, {"index": 0}, {"type": "hello"},
+                      {"type": ["tribe"]}):
+            with self.assertRaises(protocol.ProtocolError, msg=wrong):
+                protocol.parse_answer(json.dumps(tribe | wrong))
+        self.assertEqual(list(protocol.TRIBES), list(range(2, 18)))
+        self.assertEqual(protocol.TRIBE_RULES[0], "open")  # the default table's rule comes first
 
 
 if __name__ == "__main__":

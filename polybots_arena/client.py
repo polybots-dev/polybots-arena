@@ -13,9 +13,20 @@ read them by (`turn.names`). It needs only numpy, websockets and certifi, not th
 By default a bot accepts every board size, map type and tribe rule (`protocol.CONDITIONS`);
 `sizes`, `maps` and `tribe_rules` narrow that. What a version accepts is fixed once it has
 played: accepting other conditions needs a new version label.
+
+Under the `open` tribe rule your bot picks its own tribe for a match, before the first game,
+blind to the other's pick, and plays it in both games. `choose` gets a `Pick` (the size, map
+type, mode, the tribe ids to pick from, named in `protocol.TRIBES`, and the opponent) and
+returns a tribe id; without one, a bot picks at random, as the server would for it:
+
+    def choose(pick):
+        return 7 if 7 in pick.tribes else pick.tribes[0]    # imperius
+
+    client.play(decide, "wss://...", token="...", version="v1", choose=choose)
 """
 
 import json
+import random
 import ssl
 import threading
 
@@ -50,10 +61,25 @@ class Turn:
             setattr(self, name, protocol.unpack(message[name]))
 
 
+class Pick:
+    """A match's conditions, for picking a tribe: `size`, `map` (a `protocol.MAPS` id), `mode`,
+    `tribes` (the ids you may pick), `opponent` (bot name, version), `time` (seconds to answer)."""
+
+    def __init__(self, message):
+        self.match, self.size, self.map, self.mode = message["match"], message["size"], message["map"], message["mode"]
+        self.tribes, self.opponent, self.time = message["tribes"], tuple(message["opponent"]), message["time"]
+
+
+def random_tribe(pick):
+    """The chooser of a bot that sets none: a tribe at random, as the server draws for a bot that
+    does not answer, so a bot without one loses nothing and nobody waits for the clock."""
+    return random.choice(pick.tribes)
+
+
 class Client:
     def __init__(self, decide, url, token, version, games=1, sizes=protocol.SIZES, maps=tuple(protocol.MAPS),
-                 tribe_rules=protocol.TRIBE_RULES, retry=5.0, log=print):
-        self.decide, self.url, self.retry, self.log = decide, url, retry, log
+                 tribe_rules=protocol.TRIBE_RULES, choose=random_tribe, retry=5.0, log=print):
+        self.decide, self.choose, self.url, self.retry, self.log = decide, choose, url, retry, log
         self.entry = {"type": "hello", "protocol": protocol.VERSION, "token": token, "version": version,
                       "games": games, "sizes": list(sizes), "maps": list(maps), "tribe_rules": list(tribe_rules)}
         self.socket, self.closed = None, threading.Event()
@@ -76,6 +102,8 @@ class Client:
                         message = json.loads(text)
                         if message["type"] == "turn":
                             self.socket.send(self.answer(message, names))
+                        elif message["type"] == "pick":
+                            self.socket.send(self.pick(message))
                         else:
                             self.log(json.dumps(message))
             except ConnectionClosed as e:
@@ -91,6 +119,13 @@ class Client:
         except Exception as e:  # the bot's own error, shown as such and not as a dropped connection
             raise BotError(repr(e)) from e
         return json.dumps({"type": "move", "game": message["game"], "request": message["request"], "index": index})
+
+    def pick(self, message):
+        try:
+            tribe = int(self.choose(Pick(message)))
+        except Exception as e:  # as in `answer`
+            raise BotError(repr(e)) from e
+        return json.dumps({"type": "tribe", "match": message["match"], "tribe": tribe})
 
     def drop(self):
         """Closes the connection; `run` dials in again."""
@@ -108,6 +143,7 @@ class Client:
         self.drop()
 
 
-def play(decide, url, token, version, games=1, **accepts):
-    """Plays until the server refuses the bot; `accepts` takes `sizes`, `maps`, `tribe_rules`."""
-    Client(decide, url, token, version, games, **accepts).run()
+def play(decide, url, token, version, games=1, **options):
+    """Plays until the server refuses the bot; `options` takes `sizes`, `maps`, `tribe_rules`
+    and `choose`."""
+    Client(decide, url, token, version, games, **options).run()
